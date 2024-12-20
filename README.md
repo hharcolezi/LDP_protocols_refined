@@ -20,11 +20,11 @@ The repository provides all the code necessary to reproduce the experiments and 
 │   ├── ss.py          # Subset Selection (SS)
 │   ├── ue.py          # Unary Encoding (UE) protocols
 ├── results/           # Output from our experiments
-├── LICENSE            # License for the repository
-├── README.md          # This file
-├── LDP_MSE_ASR.ipynb  # Jupyter Notebook to reproduce experiments in the paper
 ├── config_experiments.py		   # Pre-defined settings for experiments
-└── requirements.txt   # Required Python libraries
+├── LDP_MSE_ASR.ipynb  # Jupyter Notebook to reproduce experiments in the paper
+├── requirements.txt   # Required Python libraries
+├── LICENSE            # License for the repository
+└── README.md          # This file
 ```
 
 ## Installation
