@@ -19,11 +19,12 @@ The repository provides all the code necessary to reproduce the experiments and 
 │   ├── lh.py          # Local Hashing (LH) protocols
 │   ├── ss.py          # Subset Selection (SS)
 │   ├── ue.py          # Unary Encoding (UE) protocols
-├── config.py		   # Pre-defined settings for experiments
-├── LDP_MSE_ASR.ipynb  # Jupyter Notebook to reproduce experiments in the paper
 ├── results/           # Output from our experiments
-├── requirements.txt   # Required Python libraries
-└── README.md          # This file
+├── LICENSE            # License for the repository
+├── README.md          # This file
+├── LDP_MSE_ASR.ipynb  # Jupyter Notebook to reproduce experiments in the paper
+├── config_experiments.py		   # Pre-defined settings for experiments
+└── requirements.txt   # Required Python libraries
 ```
 
 ## Installation
@@ -36,7 +37,7 @@ pip install -r requirements.txt
 ## Usage
 1 - Explore the Experiments: 
 	- Navigate to the experiments Jupyter notebook ``LDP_MSE_ASR.ipynb`` to review and execute the experiments.
-	- The ``config.py`` file contains pre-defined settings for experiments, including domain sizes, privacy regimes, and detailed scenarios for analysis (e.g., high-privacy small domains vs. low-privacy large domains). 
+	- The ``config_experiments.py`` file contains pre-defined settings for experiments, including domain sizes, privacy regimes, and detailed scenarios for analysis (e.g., high-privacy small domains vs. low-privacy large domains). 
 
 2 - Run Custom Protocols: The ``ldp_protocols`` folder contains modular implementations of the LDP protocols. Import them into your Python scripts or Jupyter notebooks as needed. For example:
 
