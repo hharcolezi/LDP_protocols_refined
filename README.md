@@ -35,10 +35,10 @@ pip install -r requirements.txt
 ## Usage
 1 - Explore the Experiments: Navigate to the experiments Jupyter notebook ``LDP_MSE_ASR.ipynb`` to review and execute the experiments.
 
-2 - Run Custom Protocols: The ldp_protocols folder contains modular implementations of the LDP protocols. Import them into your Python scripts or Jupyter notebooks as needed. For example:
+2 - Run Custom Protocols: The ``ldp_protocols`` folder contains modular implementations of the LDP protocols. Import them into your Python scripts or Jupyter notebooks as needed. For example:
 
 ```python
-ldp_protocols.aue import AdaptiveUnaryEncoding
+from ldp_protocols.aue import AdaptiveUnaryEncoding
 
 k = 10  # Domain size
 epsilon = 4  # Privacy budget
