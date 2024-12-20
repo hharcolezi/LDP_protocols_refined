@@ -1,0 +1,6 @@
+matplotlib==3.7.3
+numpy==1.26.4
+scipy==1.13.1
+numba==0.60.0
+xxhash==3.4.1
+ray==2.20.0
