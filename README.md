@@ -58,8 +58,5 @@ print("AUE Variance:", aue.get_variance(), "\n")
 
 ```
 
-## Contact
-For any question, please contact [Héber H. Arcolezi](https://hharcolezi.github.io/): heber.hwang-arcolezi [at] inria.fr
-
 ## License
 This repository is licensed under the MIT License. See [LICENSE](https://github.com/hharcolezi/LDP_protocols_reoptimized/blob/main/LICENSE) for details.
