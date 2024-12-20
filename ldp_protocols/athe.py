@@ -2,7 +2,8 @@ import numpy as np
 from numba import jit
 from scipy.special import loggamma
 import matplotlib.pyplot as plt
-import warnings; warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp")
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp")
 from scipy.special import comb
 
 @jit(nopython=True)

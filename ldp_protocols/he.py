@@ -4,7 +4,8 @@ from scipy.optimize import minimize_scalar
 from scipy.special import loggamma
 from scipy.stats import laplace
 from scipy.integrate import quad
-import warnings; warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp")
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp")
 
 @jit(nopython=True)
 def get_opt_tresh(threshold: float, epsilon: float) -> float:

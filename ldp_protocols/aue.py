@@ -2,7 +2,8 @@ import numpy as np
 from numba import jit
 import matplotlib.pyplot as plt
 from scipy.stats import binom
-import warnings; warnings.filterwarnings("ignore", category=RuntimeWarning, module="scipy.stats")
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="scipy.stats")
 warnings.filterwarnings("ignore", message="divide by zero encountered in _binom_pdf", module="scipy.stats._discrete_distns")
 
 @jit(nopython=True)
