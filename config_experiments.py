@@ -24,3 +24,6 @@ dic_analyses = {
                 "low_priv_medium_domain": {"k": medium_domain, "lst_eps": low_privacy, "title": "Low Privacy Regime & Medium Domain Size"},
                 "low_priv_large_domain": {"k": high_domain, "lst_eps": low_privacy, "title": "Low Privacy Regime & Large Domain Size"}
                 }
+
+# Empirical experiments
+nb_users = [500, 5000, 50000]
