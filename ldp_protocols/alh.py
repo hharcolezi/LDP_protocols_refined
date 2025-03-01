@@ -198,7 +198,7 @@ class AdaptiveLocalHashing:
         else:
             return np.random.choice(ss_lh)
 
-    def get_variance(self, g: int = None) -> float:
+    def get_variance(self, g: int = None, n: int = 1) -> float:
         """
         Compute the variance of the LH mechanism for a given g.
 
@@ -218,7 +218,7 @@ class AdaptiveLocalHashing:
         p = np.exp(self.epsilon) / (np.exp(self.epsilon) + g - 1)
         q = 1 / g
 
-        return q * (1 - q) / (p - q) ** 2
+        return q * (1 - q) / (n * (p - q) ** 2)
 
     def get_asr(self, g: int = None) -> float:
         """

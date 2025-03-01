@@ -243,7 +243,7 @@ class AdaptiveUnaryEncoding:
         
         return attack_ue(obfuscated_vec, self.k)
 
-    def get_variance(self, p: float = None, q: float = None) -> float:
+    def get_variance(self, p: float = None, q: float = None, n: int = 1) -> float:
         """
         Compute the variance of the AUE mechanism.
 
@@ -262,7 +262,7 @@ class AdaptiveUnaryEncoding:
         if p is None or q is None:
             p, q = self.p, self.q
 
-        return q * (1 - q) / (p - q) ** 2
+        return q * (1 - q) / (n * (p - q) ** 2)
 
     def get_asr(self, p: float = None, q: float = None) -> float:
         """

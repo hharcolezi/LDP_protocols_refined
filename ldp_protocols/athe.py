@@ -222,7 +222,7 @@ class AdaptiveThresholdingHistogramEncoding:
         
         return attack_the(obfuscated_vec, self.k)
 
-    def get_variance(self, threshold: float = None) -> float:
+    def get_variance(self, threshold: float = None, n: int = 1) -> float:
         """
         Compute the variance of the Adaptive THE mechanism.
 
@@ -238,7 +238,7 @@ class AdaptiveThresholdingHistogramEncoding:
             The variance of the Adaptive THE mechanism.
         """
         tresh = threshold if threshold is not None else self.threshold
-        return (2 * np.exp(self.epsilon * tresh / 2) - 1) / (1 + np.exp(self.epsilon * (tresh - 0.5)) - 2 * np.exp(self.epsilon * tresh / 2))**2
+        return (2 * np.exp(self.epsilon * tresh / 2) - 1) / (n * (1 + np.exp(self.epsilon * (tresh - 0.5)) - 2 * np.exp(self.epsilon * tresh / 2))**2)
 
     def get_asr(self, threshold: float = None) -> float:
         """

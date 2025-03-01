@@ -156,7 +156,7 @@ class LocalHashing:
         else:
             return np.random.choice(ss_lh)
 
-    def get_variance(self) -> float:
+    def get_variance(self, n: int = 1) -> float:
         """
         Compute the variance of the LH mechanism.
 
@@ -164,7 +164,7 @@ class LocalHashing:
         float: The variance of the LH mechanism.
         """
         
-        return self.q * (1 - self.q) / (self.p - self.q)**2
+        return self.q * (1 - self.q) / (n * (self.p - self.q)**2)
     
     def get_asr(self) -> float:
         """

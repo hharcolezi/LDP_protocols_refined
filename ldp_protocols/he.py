@@ -221,7 +221,7 @@ class HistogramEncoding:
         # Attack for SHE: Predict the index with the maximum value
         return np.argmax(obfuscated_vec)
 
-    def get_variance(self) -> float:
+    def get_variance(self, n: int = 1) -> float:
         """
         Compute the variance of the Thresholded Histogram Encoding (THE) mechanism.
 
@@ -231,9 +231,9 @@ class HistogramEncoding:
             The variance of the THE mechanism.
         """
         if self.thresholding:
-            return self.q * (1 - self.q) / (self.p - self.q)**2
+            return self.q * (1 - self.q) / (n * (self.p - self.q)**2)
         
-        return 8 / self.epsilon**2
+        return 8 / (n * self.epsilon**2)
    
     def get_asr(self) -> float:
         """

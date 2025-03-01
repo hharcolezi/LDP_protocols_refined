@@ -221,7 +221,7 @@ class AdaptiveSubsetSelection:
         
         return attack_ss(obfuscated_vec)
 
-    def get_variance(self, omega: int = None) -> float:
+    def get_variance(self, omega: int = None, n: int = 1) -> float:
         """
         Compute the variance of the Adaptive Subset Selection (ASS) mechanism.
 
@@ -242,7 +242,7 @@ class AdaptiveSubsetSelection:
         p = (omega * np.exp(self.epsilon)) / (omega * np.exp(self.epsilon) + self.k - omega)
         q = (omega * np.exp(self.epsilon) * (omega - 1) + (self.k - omega) * omega) / ((self.k - 1) * (omega * np.exp(self.epsilon) + self.k - omega))
 
-        return q * (1 - q) / (p - q)**2
+        return q * (1 - q) / (n * (p - q) ** 2)
 
     def get_asr(self, omega: int = None) -> float:
         """

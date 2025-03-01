@@ -194,7 +194,7 @@ class SubsetSelection:
         
         return attack_ss(obfuscated_vec)
 
-    def get_variance(self) -> float:
+    def get_variance(self, n: int = 1) -> float:
         """
         Compute the variance of the Subset Selection (SS) protocol.
 
@@ -204,7 +204,7 @@ class SubsetSelection:
             The variance of the SS mechanism, quantifying the expected estimation error.
         """
 
-        return self.q * (1 - self.q) / (self.p - self.q)**2
+        return self.q * (1 - self.q) / (n * (self.p - self.q)**2)
     
     def get_asr(self) -> float:
         """
