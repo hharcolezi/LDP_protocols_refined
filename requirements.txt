@@ -4,3 +4,4 @@ scipy==1.13.1
 numba==0.60.0
 xxhash==3.4.1
 ray==2.20.0
+ucimlrepo==0.0.7
