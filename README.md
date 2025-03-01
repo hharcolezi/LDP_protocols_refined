@@ -1,11 +1,15 @@
 # Revisiting and Re-Optimizing LDP Protocols
 This repository contains the implementation of the experiments and methodologies presented in the paper **"Revisiting Locally Differentially Private Protocols: Towards Better Trade-offs in Privacy, Utility, and Attack Resistance"**. 
-The key contributions of this project include:
-- Introducing adaptive versions of existing protocols: ASS, AUE, ALH, and ATHE.
-- Proposing a two-objective optimization framework to minimize Attacker Success Rate (ASR) and Mean Squared Error (MSE).
-- Analytical and empirical evaluation of protocols across different settings.
 
-The repository provides all the code necessary to reproduce the experiments and results from the paper.
+The key contributions of this work include:
+- **Multi-Objective Optimization Framework:** A novel approach for refining LDP frequency estimation protocols.
+- **Two-Objective Instantiation:** Optimizing Attacker Success Rate (ASR) and Mean Squared Error (MSE) simultaneously.
+- **Refined and Adaptive Protocols:** Introducing four optimized variants—ASS, AUE, ALH, and ATHE. 
+- **Extensive Evaluation:** Analytical and empirical comparisons of LDP protocols under different settings.
+
+Repository Contents:
+- **Full Version of the Paper:** [Access here](https://github.com/hharcolezi/LDP_protocols_refined/blob/main/2025_Revisiting_LDP_Protocols.pdf).
+- **Codebase:** All necessary scripts to reproduce the experiments and results from the paper.
 
 ## Repository Structure
 ```bash
@@ -57,6 +61,10 @@ print("AUE ASR:", aue.get_asr())
 print("AUE Variance:", aue.get_variance(), "\n")
 
 ```
+
+## Contact
+For any question, please contact [Héber H. Arcolezi](https://hharcolezi.github.io/): heber.hwang-arcolezi [at] inria.fr
+
 
 ## License
 This repository is licensed under the MIT License. See [LICENSE](https://github.com/hharcolezi/LDP_protocols_reoptimized/blob/main/LICENSE) for details.
