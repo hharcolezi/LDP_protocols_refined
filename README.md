@@ -8,7 +8,7 @@ The key contributions of this work include:
 - **Extensive Evaluation:** Analytical and empirical comparisons of LDP protocols under different settings.
 
 Repository Contents:
-- **Full Version of the Paper:** [Access here](https://github.com/hharcolezi/LDP_protocols_refined/blob/main/2025_Revisiting_LDP_Protocols.pdf).
+- **Full Version of the Paper:** [Access here](https://github.com/hharcolezi/LDP_protocols_refined/blob/main/2025_Revisiting_LDP_Protocols.pdf) or via [Arxiv](https://arxiv.org/abs/2503.01482).
 - **Codebase:** All necessary scripts to reproduce the experiments and results from the paper.
 
 ## Repository Structure
