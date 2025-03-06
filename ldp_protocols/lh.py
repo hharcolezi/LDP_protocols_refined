@@ -156,12 +156,12 @@ class LocalHashing:
         else:
             return np.random.choice(ss_lh)
 
-    def get_variance(self, n: int = 1) -> float:
+    def get_mse(self, n: int = 1) -> float:
         """
-        Compute the variance of the LH mechanism.
+        Compute the MSE of the LH mechanism.
 
         Returns:
-        float: The variance of the LH mechanism.
+        float: The MSE of the LH mechanism.
         """
         
         return self.q * (1 - self.q) / (n * (self.p - self.q)**2)

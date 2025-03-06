@@ -194,14 +194,14 @@ class SubsetSelection:
         
         return attack_ss(obfuscated_vec)
 
-    def get_variance(self, n: int = 1) -> float:
+    def get_mse(self, n: int = 1) -> float:
         """
-        Compute the variance of the Subset Selection (SS) protocol.
+        Compute the MSE of the Subset Selection (SS) protocol.
 
         Returns
         -------
         float
-            The variance of the SS mechanism, quantifying the expected estimation error.
+            The MSE of the SS mechanism, quantifying the expected estimation error.
         """
 
         return self.q * (1 - self.q) / (n * (self.p - self.q)**2)

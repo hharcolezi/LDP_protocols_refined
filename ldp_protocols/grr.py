@@ -149,14 +149,14 @@ class GeneralizedRandomizedResponse:
         
         return obfuscated_value
 
-    def get_variance(self, n: int = 1) -> float:
+    def get_mse(self, n: int = 1) -> float:
         """
-        Compute the variance of the Generalized Randomized Response (GRR) mechanism.
+        Compute the MSE of the Generalized Randomized Response (GRR) mechanism.
 
         Returns
         -------
         float
-            The variance of the GRR mechanism.
+            The MSE of the GRR mechanism.
         """
         return self.q * (1 - self.q) / (n * (self.p - self.q)**2)
 

@@ -72,7 +72,7 @@ def attack_ss(obfuscated_vec: np.ndarray) -> int:
     return np.random.choice(obfuscated_vec)
 
 class AdaptiveSubsetSelection:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_variance: float = 0.5):
+    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
         """
         Initialize the Adaptive Subset Selection (ASS) protocol with domain size k and privacy parameter epsilon.
 
@@ -84,8 +84,8 @@ class AdaptiveSubsetSelection:
             Privacy guarantee. Must be a positive numerical value.
         w_asr : float, optional
             Weight given to the Adversarial Success Rate (ASR) in the objective function. Default is 0.5.
-        w_variance : float, optional
-            Weight given to the variance in the objective function. Default is 0.5.
+        w_mse : float, optional
+            Weight given to the MSE in the objective function. Default is 0.5.
 
         Raises
         ------
@@ -96,13 +96,13 @@ class AdaptiveSubsetSelection:
             raise ValueError("k must be an integer >= 2.")
         if epsilon <= 0:
             raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_variance <= 1):
+        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
             raise ValueError("Weights must be between 0 and 1.")
 
         # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_variance
+        total_weight = w_asr + w_mse
         self.w_asr = w_asr / total_weight
-        self.w_variance = w_variance / total_weight
+        self.w_mse = w_mse / total_weight
         self.k = k
         self.epsilon = epsilon
         self.omega = self.optimize_parameters()
@@ -122,7 +122,7 @@ class AdaptiveSubsetSelection:
     
     def optimize_parameters(self) -> int:
         """
-        Optimize the value of omega using grid search to balance variance and ASR.
+        Optimize the value of omega using grid search to balance MSE and ASR.
 
         Returns
         -------
@@ -137,8 +137,8 @@ class AdaptiveSubsetSelection:
 
         for omega in omega_values:
             asr = self.get_asr(omega)
-            variance = self.get_variance(omega)
-            obj_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(omega)
+            obj_value = self.w_asr * asr + self.w_mse * mse
 
             if obj_value < best_obj_value:
                 best_omega = omega
@@ -221,9 +221,9 @@ class AdaptiveSubsetSelection:
         
         return attack_ss(obfuscated_vec)
 
-    def get_variance(self, omega: int = None, n: int = 1) -> float:
+    def get_mse(self, omega: int = None, n: int = 1) -> float:
         """
-        Compute the variance of the Adaptive Subset Selection (ASS) mechanism.
+        Compute the MSE of the Adaptive Subset Selection (ASS) mechanism.
 
         Parameters
         ----------
@@ -233,7 +233,7 @@ class AdaptiveSubsetSelection:
         Returns
         -------
         float
-            The variance of the ASS mechanism.
+            The MSE of the ASS mechanism.
         """
         if omega is None:
             omega = self.omega
@@ -272,8 +272,8 @@ class AdaptiveSubsetSelection:
 
         for omega in omega_values:
             asr = self.get_asr(omega)
-            variance = self.get_variance(omega)
-            obj_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(omega)
+            obj_value = self.w_asr * asr + self.w_mse * mse
             objective_values.append(obj_value)
 
         plt.plot(omega_values, objective_values, marker='o', label='Objective Function')

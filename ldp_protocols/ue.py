@@ -201,14 +201,14 @@ class UnaryEncoding:
         
         return attack_ue(obfuscated_vec, self.k)
 
-    def get_variance(self, n: int = 1) -> float:
+    def get_mse(self, n: int = 1) -> float:
         """
-        Compute the variance of the Unary Encoding (UE) mechanism.
+        Compute the MSE of the Unary Encoding (UE) mechanism.
 
         Returns
         -------
         float
-            The variance of the UE mechanism.
+            The MSE of the UE mechanism.
         """
         
         return self.q * (1 - self.q) / (n * (self.p - self.q)**2)

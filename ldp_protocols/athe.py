@@ -67,7 +67,7 @@ def attack_the(ss_the, k):
         return np.random.choice(ss_the)
 
 class AdaptiveThresholdingHistogramEncoding:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_variance: float = 0.5):
+    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
         """
         Initialize the Adaptive Thresholding Histogram Encoding (Adaptive THE) protocol.
 
@@ -79,8 +79,8 @@ class AdaptiveThresholdingHistogramEncoding:
             The privacy budget, which determines the level of privacy guarantee. Must be positive.
         w_asr : float, optional
             Weight given to the Adversarial Success Rate (ASR) in the objective function. Default is 0.5.
-        w_variance : float, optional
-            Weight given to the variance in the objective function. Default is 0.5.
+        w_mse : float, optional
+            Weight given to the MSE in the objective function. Default is 0.5.
 
         Raises
         ------
@@ -91,13 +91,13 @@ class AdaptiveThresholdingHistogramEncoding:
             raise ValueError("k must be an integer >= 2.")
         if epsilon <= 0:
             raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_variance <= 1):
+        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
             raise ValueError("Weights must be between 0 and 1.")
         
         # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_variance
+        total_weight = w_asr + w_mse
         self.w_asr = w_asr / total_weight
-        self.w_variance = w_variance / total_weight
+        self.w_mse = w_mse / total_weight
         self.k = k
         self.epsilon = epsilon
         self.threshold = self.optimize_parameters()
@@ -118,10 +118,10 @@ class AdaptiveThresholdingHistogramEncoding:
 
     def optimize_parameters(self) -> float:
         """
-        Optimize the threshold value to achieve a balance between variance and ASR.
+        Optimize the threshold value to achieve a balance between MSE and ASR.
 
         This method performs a grid-search over a range of possible threshold values and selects the one
-        that minimizes a weighted combination of the variance and ASR.
+        that minimizes a weighted combination of the MSE and ASR.
 
         Returns
         -------
@@ -138,8 +138,8 @@ class AdaptiveThresholdingHistogramEncoding:
 
         for tresh in thresholds:
             asr = self.get_asr(tresh)
-            variance = self.get_variance(tresh)
-            obj_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(tresh)
+            obj_value = self.w_asr * asr + self.w_mse * mse
             if obj_value < best_obj_value:
                 best_threshold = tresh
                 best_obj_value = obj_value
@@ -222,20 +222,20 @@ class AdaptiveThresholdingHistogramEncoding:
         
         return attack_the(obfuscated_vec, self.k)
 
-    def get_variance(self, threshold: float = None, n: int = 1) -> float:
+    def get_mse(self, threshold: float = None, n: int = 1) -> float:
         """
-        Compute the variance of the Adaptive THE mechanism.
+        Compute the MSE of the Adaptive THE mechanism.
 
         Parameters
         ----------
         threshold : float, optional
-            The threshold value to be used for the variance calculation.
+            The threshold value to be used for the MSE calculation.
             If None, the optimized threshold value will be used.
 
         Returns
         -------
         float
-            The variance of the Adaptive THE mechanism.
+            The MSE of the Adaptive THE mechanism.
         """
         tresh = threshold if threshold is not None else self.threshold
         return (2 * np.exp(self.epsilon * tresh / 2) - 1) / (n * (1 + np.exp(self.epsilon * (tresh - 0.5)) - 2 * np.exp(self.epsilon * tresh / 2))**2)
@@ -291,15 +291,15 @@ class AdaptiveThresholdingHistogramEncoding:
         Plot the objective function over a range of threshold values.
 
         This method visualizes the relationship between the threshold value and the objective function,
-        which is a combination of ASR and variance.
+        which is a combination of ASR and MSE.
         """
         thresholds = self.get_parameter_range()
         objective_values = []
 
         for tresh in thresholds:
             asr = self.get_asr(tresh)
-            variance = self.get_variance(tresh)
-            objective_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(tresh)
+            objective_value = self.w_asr * asr + self.w_mse * mse
             objective_values.append(objective_value)
 
         plt.plot(thresholds, objective_values, marker='o')

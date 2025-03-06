@@ -88,7 +88,7 @@ def attack_ue(obfuscated_vec: np.ndarray, k: int) -> int:
             return np.random.choice(np.where(obfuscated_vec == 1)[0])
 
 class AdaptiveUnaryEncoding:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_variance: float = 0.5):
+    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
         """
         Initialize the Adaptive Unary Encoding (AUE) protocol.
 
@@ -100,8 +100,8 @@ class AdaptiveUnaryEncoding:
             The privacy budget, which determines the level of privacy guarantee. Must be positive.
         w_asr : float, optional
             Weight for the Adversarial Success Rate (ASR) in the optimization objective. Default is 0.5.
-        w_variance : float, optional
-            Weight for the variance in the optimization objective. Default is 0.5.
+        w_mse : float, optional
+            Weight for the MSE in the optimization objective. Default is 0.5.
 
         Raises
         ------
@@ -112,13 +112,13 @@ class AdaptiveUnaryEncoding:
             raise ValueError("k must be an integer >= 2.")
         if epsilon <= 0:
             raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_variance <= 1):
+        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
             raise ValueError("Weights must be between 0 and 1.")
         
         # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_variance
+        total_weight = w_asr + w_mse
         self.w_asr = w_asr / total_weight
-        self.w_variance = w_variance / total_weight
+        self.w_mse = w_mse / total_weight
         self.k = k
         self.epsilon = epsilon
         self.p, self.q = self.optimize_parameters()
@@ -136,7 +136,7 @@ class AdaptiveUnaryEncoding:
 
     def optimize_parameters(self) -> tuple[float, float]:
         """
-        Optimize the parameters `p` and `q` using grid search to minimize the weighted sum of ASR and variance.
+        Optimize the parameters `p` and `q` using grid search to minimize the weighted sum of ASR and MSE.
 
         Returns
         -------
@@ -158,7 +158,7 @@ class AdaptiveUnaryEncoding:
             q = p / (np.exp(self.epsilon) * (1 - p) + p)
 
             # Calculate the objective function value
-            obj_value = self.w_asr * self.get_asr(p, q) + self.w_variance * self.get_variance(p, q)
+            obj_value = self.w_asr * self.get_asr(p, q) + self.w_mse * self.get_mse(p, q)
 
             if obj_value < best_objective_value:
                 best_objective_value = obj_value
@@ -243,9 +243,9 @@ class AdaptiveUnaryEncoding:
         
         return attack_ue(obfuscated_vec, self.k)
 
-    def get_variance(self, p: float = None, q: float = None, n: int = 1) -> float:
+    def get_mse(self, p: float = None, q: float = None, n: int = 1) -> float:
         """
-        Compute the variance of the AUE mechanism.
+        Compute the MSE of the AUE mechanism.
 
         Parameters
         ----------
@@ -257,7 +257,7 @@ class AdaptiveUnaryEncoding:
         Returns
         -------
         float
-            The variance of the AUE mechanism.
+            The MSE of the AUE mechanism.
         """
         if p is None or q is None:
             p, q = self.p, self.q
@@ -308,8 +308,8 @@ class AdaptiveUnaryEncoding:
 
             # Calculate the objective function value
             asr = self.get_asr(p, q)
-            variance = self.get_variance(p, q)
-            objective_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(p, q)
+            objective_value = self.w_asr * asr + self.w_mse * mse
             objective_values.append(objective_value)
 
         plt.plot(p_values, objective_values, marker='o', label='Objective Function')

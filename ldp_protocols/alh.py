@@ -4,7 +4,7 @@ import xxhash
 import matplotlib.pyplot as plt
 
 class AdaptiveLocalHashing:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_variance: float = 0.5):
+    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
         """
         Initialize the Adaptive Local Hashing (ALH) protocol.
 
@@ -16,8 +16,8 @@ class AdaptiveLocalHashing:
             Privacy guarantee. Must be a positive numerical value.
         w_asr : float, optional
             Weight given to the Adversarial Success Rate (ASR) in the objective function. Default is 0.5.
-        w_variance : float, optional
-            Weight given to the variance in the objective function. Default is 0.5.
+        w_mse : float, optional
+            Weight given to the MSE in the objective function. Default is 0.5.
 
         Raises
         ------
@@ -28,13 +28,13 @@ class AdaptiveLocalHashing:
             raise ValueError("k must be an integer >= 2.")
         if epsilon <= 0:
             raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_variance <= 1):
+        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
             raise ValueError("Weights must be between 0 and 1.")
 
         # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_variance
+        total_weight = w_asr + w_mse
         self.w_asr = w_asr / total_weight
-        self.w_variance = w_variance / total_weight
+        self.w_mse = w_mse / total_weight
         self.k = k
         self.epsilon = epsilon
         self.g = self.optimize_parameters()
@@ -56,7 +56,7 @@ class AdaptiveLocalHashing:
 
     def optimize_parameters(self) -> int:
         """
-        Grid-search optimization for the value of g to balance variance and ASR.
+        Grid-search optimization for the value of g to balance MSE and ASR.
 
         Returns
         -------
@@ -72,8 +72,8 @@ class AdaptiveLocalHashing:
 
         for g in g_values:
             asr = self.get_asr(g)
-            variance = self.get_variance(g)
-            obj_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(g)
+            obj_value = self.w_asr * asr + self.w_mse * mse
             if obj_value < best_obj_value:
                 best_g = g
                 best_obj_value = obj_value
@@ -198,9 +198,9 @@ class AdaptiveLocalHashing:
         else:
             return np.random.choice(ss_lh)
 
-    def get_variance(self, g: int = None, n: int = 1) -> float:
+    def get_mse(self, g: int = None, n: int = 1) -> float:
         """
-        Compute the variance of the LH mechanism for a given g.
+        Compute the MSE of the LH mechanism for a given g.
 
         Parameters
         ----------
@@ -210,7 +210,7 @@ class AdaptiveLocalHashing:
         Returns
         -------
         float
-            The variance of the LH mechanism.
+            The MSE of the LH mechanism.
         """
         if g is None:
             g = self.g
@@ -248,8 +248,8 @@ class AdaptiveLocalHashing:
 
         for g in g_values:
             asr = self.get_asr(g)
-            variance = self.get_variance(g)
-            objective_value = self.w_asr * asr + self.w_variance * variance
+            mse = self.get_mse(g)
+            objective_value = self.w_asr * asr + self.w_mse * mse
             objective_values.append(objective_value)
 
         plt.plot(g_values, objective_values, marker='o', label='Objective Function')
