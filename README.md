@@ -8,7 +8,7 @@ The key contributions of this work include:
 - **Extensive Evaluation:** Analytical and empirical comparisons of LDP protocols under different settings.
 
 Repository Contents:
-- **Full Version of the Paper:** [Access here](https://github.com/hharcolezi/LDP_protocols_refined/blob/main/2025_Revisiting_LDP_Protocols.pdf) or via [Arxiv](https://arxiv.org/abs/2503.01482).
+- **Full Version of the Paper:** [Arxiv](https://arxiv.org/abs/2503.01482).
 - **Codebase:** All necessary scripts to reproduce the experiments and results from the paper.
 
 ## Repository Structure
@@ -23,6 +23,7 @@ Repository Contents:
 │   ├── lh.py          # Local Hashing (LH) protocols
 │   ├── ss.py          # Subset Selection (SS)
 │   ├── ue.py          # Unary Encoding (UE) protocols
+│   ├── optimizer.py   # Optimization methods for adaptive protocols
 ├── results/           # Output from our experiments
 ├── config_experiments.py		   # Pre-defined settings for experiments
 ├── LDP_MSE_ASR.ipynb  # Jupyter Notebook to reproduce experiments in the paper
