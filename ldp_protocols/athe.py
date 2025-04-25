@@ -1,10 +1,27 @@
+from __future__ import annotations
+
+from typing import Iterable, Tuple, Callable, Sequence
+import warnings
+
 import numpy as np
+import matplotlib.pyplot as plt
 from numba import jit
 from scipy.special import loggamma
-import matplotlib.pyplot as plt
-import warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in exp")
-from scipy.special import comb
+
+# silence harmless numba / exp overflow warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+from ldp_protocols.optimizer import (
+    pareto_front,
+    select_utopia,
+    select_elbow,
+    select_weighted,
+    select_epsilon_constraint,
+    select_hv_contribution,
+    select_chebyshev
+)
+
+__all__ = ["AdaptiveThresholdingHistogramEncoding"]
 
 @jit(nopython=True)
 def he_obfuscate(input_data: int, k: int, epsilon: float) -> np.ndarray:
@@ -67,84 +84,138 @@ def attack_the(ss_the, k):
         return np.random.choice(ss_the)
 
 class AdaptiveThresholdingHistogramEncoding:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
-        """
-        Initialize the Adaptive Thresholding Histogram Encoding (Adaptive THE) protocol.
+    """
+    Adaptive Thresholding Histogram Encoding (ATHE).
 
-        Parameters
-        ----------
-        k : int
-            The size of the domain (number of possible values). Must be an integer >= 2.
-        epsilon : float
-            The privacy budget, which determines the level of privacy guarantee. Must be positive.
-        w_asr : float, optional
-            Weight given to the Adversarial Success Rate (ASR) in the objective function. Default is 0.5.
-        w_mse : float, optional
-            Weight given to the MSE in the objective function. Default is 0.5.
+    Parameters
+    ----------
+    k : int
+        Domain size (≥ 2).
+    epsilon : float
+        Privacy budget (ε > 0).
+    optimization : {"elbow", "utopia", "weighted", "epsilon_constraint", "hypervolume", "chebyshev"}, default "weighted"
+        Optimization strategy used to select the best value of `p`:
+        • ``elbow`` - selects the Pareto point corresponding to the maximum perpendicular distance
+          from the line joining the extreme ASR/MSE trade-off points. Suitable for detecting "knee" points.\\
+        • ``utopia`` - selects the point on the Pareto frontier closest (in Euclidean distance)
+          to the ideal (ASR → 0, MSE → 0) point.\\
+        • ``weighted`` - selects the point that minimises a scalarised weighted sum
+          *w₁·ASR + w₂·MSE*, using the user-provided `weights`.\\
+        • ``epsilon_constraint`` - selects the point with minimal MSE among those whose ASR is
+          below a threshold `eps_asr`. Falls back to utopia if no such point exists.\\
+        • ``hypervolume`` - selects the point contributing the largest hypervolume (coverage) with
+          respect to a reference point. Promotes diversity and coverage.\\
+        • ``chebyshev`` - selects the point that minimises the augmented weighted Chebyshev norm:
+          *max(w₁·ASR, w₂·MSE) + ρ·(w₁·ASR + w₂·MSE)*. Useful for capturing edge cases.
 
-        Raises
-        ------
-        ValueError
-            If `k` is not >= 2, `epsilon` is not positive, or the weights are invalid.
-        """
-        if not isinstance(k, int) or k < 2:
-            raise ValueError("k must be an integer >= 2.")
-        if epsilon <= 0:
-            raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
-            raise ValueError("Weights must be between 0 and 1.")
-        
-        # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_mse
-        self.w_asr = w_asr / total_weight
-        self.w_mse = w_mse / total_weight
-        self.k = k
-        self.epsilon = epsilon
-        self.threshold = self.optimize_parameters()
-        self.p = 1 - 0.5 * np.exp(self.epsilon*(self.threshold - 1)/2)
-        self.q = 0.5 * np.exp(-self.epsilon*self.threshold/2)
+    weights : tuple(float, float), optional
+        Weight vector used when `optimization` is "weighted" or "chebyshev".
+        Must be two non-negative numbers; they are normalized internally.
 
-    def get_parameter_range(self) -> np.ndarray:
-        """
-        Generate a range of threshold values for optimization.
+    eps_asr : float, optional
+        Maximum allowed ASR when `optimization` is "epsilon_constraint". Default is 0.1.
 
-        Returns
-        -------
-        np.ndarray
-            A numpy array of threshold values in the range [0.5, 1].
-        """
-        
-        return np.linspace(0.5, 1.0, 100)
+    ref_point : tuple(float, float), optional
+        Reference point for hypervolume computation when `optimization` is "hypervolume".
+        Default is (1.0, 1.0).
 
-    def optimize_parameters(self) -> float:
-        """
-        Optimize the threshold value to achieve a balance between MSE and ASR.
+    rho : float, optional
+        Augmentation term used in "chebyshev" optimization. Default is 1e-6.
+    threshold_grid : Iterable[float], optional
+        Custom grid of candidate threshold values; defaults to
+        ``np.linspace(0.5, 1.0, 100)``.
+    """
+    def __init__(
+        self,
+        k: int,
+        epsilon: float,
+        optimization: str = "weighted",
+        weights: Tuple[float, float] | None = (0.5, 0.5),
+        eps_asr: float = 0.1,
+        ref_point: Tuple[float, float] = (1.0, 1.0),
+        rho: float = 1e-6,
+        threshold_grid: Iterable[float] | None = None,
+    ) -> None:
+        # basic sanity checks
+        if k < 2:
+            raise ValueError("k must be ≥ 2")
+        if not np.isfinite(epsilon) or epsilon <= 0:
+            raise ValueError("epsilon must be positive and finite")
+        if optimization not in {"elbow", "utopia", "weighted", "epsilon_constraint", "hypervolume", "chebyshev"}:
+            raise ValueError("Optimization must be 'elbow', 'utopia', 'weighted', 'epsilon_constraint', 'hypervolume', or 'chebyshev")
 
-        This method performs a grid-search over a range of possible threshold values and selects the one
-        that minimizes a weighted combination of the MSE and ASR.
+        self.k: int = k
+        self.epsilon: float = epsilon
+        self.optimization = optimization
+        self.eps_asr = eps_asr
+        self.ref_point = ref_point
+        self.rho = rho
 
-        Returns
-        -------
-        float
-            The optimized threshold value.
-        """
+        # candidate threshold grid
+        self._threshold_grid = (
+            np.linspace(0.5, 1.0, 100) if threshold_grid is None
+            else np.asarray(list(threshold_grid), dtype=float)
+        )
 
-        # Define range of threshold values to search over
-        thresholds = self.get_parameter_range()
+        # Build Pareto frontier (ASR,MSE) for every threshold
+        self._frontier = pareto_front(self._threshold_grid, self.metrics) # [(threshold, (ASR,MSE))]
 
-        # Perform grid search to find the best threshold
-        best_threshold = 0.5
-        best_obj_value = float('inf')
+        # select operating point
+        if optimization == "elbow":
+            self.threshold, _ = select_elbow(self._frontier)
 
-        for tresh in thresholds:
-            asr = self.get_asr(tresh)
-            mse = self.get_mse(tresh)
-            obj_value = self.w_asr * asr + self.w_mse * mse
-            if obj_value < best_obj_value:
-                best_threshold = tresh
-                best_obj_value = obj_value
+        elif optimization == "utopia":
+            self.threshold, _ = select_utopia(self._frontier)
 
-        return best_threshold
+        elif optimization == "weighted":
+            if weights is None:
+                raise ValueError("weights must be provided for weighted selector")
+            w = np.asarray(weights, dtype=float)
+            if w.shape != (2,) or (w < 0).any() or w.sum() == 0:
+                raise ValueError("weights must be two non-negative numbers")
+            self.threshold, _ = select_weighted(self._frontier, w)
+
+        elif optimization == "epsilon_constraint":
+            self.threshold, _ = select_epsilon_constraint(self._frontier, eps_asr=self.eps_asr)
+
+        elif optimization == "hypervolume":
+            self.threshold, _ = select_hv_contribution(self._frontier, ref_point=self.ref_point)
+
+        elif optimization == "chebyshev":
+            if weights is None:
+                raise ValueError("weights must be provided for chebyshev selector")
+            w = np.asarray(weights, dtype=float)
+            if w.shape != (2,) or (w < 0).any() or w.sum() == 0:
+                raise ValueError("weights must be two non-negative numbers")
+            self.threshold, _ = select_chebyshev(self._frontier, w / w.sum(), rho=self.rho)
+
+        # pre-compute p, q and RNG
+        self.p, self.q = self._pq(self.threshold)
+        self._rng = np.random.default_rng()
+
+    # ------------------------------------------------------------------
+    # Parameter space & metrics (required by optimizer)
+    # ------------------------------------------------------------------
+    def param_space(self) -> Iterable[int]:
+        """Return iterable of candidate threshold values."""
+        return self._threshold_grid
+    
+    def _pq(self, threshold: float) -> Tuple[float, float]:
+        """Return (p,q) for a given threshold."""
+        p = 1.0 - 0.5 * np.exp(self.epsilon * (threshold - 1.0) / 2.0)
+        q = 0.5 * np.exp(-self.epsilon * threshold / 2.0)
+        return p, q
+
+    def metrics(self, threshold: float) -> Tuple[float, float]:
+        """Return (ASR, MSE) for candidate threshold."""
+        return self.get_asr(threshold), self.get_mse(threshold)
+    
+    # alias so the optimiser can treat the instance as a callable
+    __call__: Callable[[float], Tuple[float, float]] = metrics
+
+    # ------------------------------------------------------------------
+    # Core protocol operations
+    # ------------------------------------------------------------------
 
     def obfuscate(self, input_data: int) -> np.ndarray:
         """
@@ -286,27 +357,32 @@ class AdaptiveThresholdingHistogramEncoding:
 
         return asr
 
-    def plot_objective_function(self) -> None:
-        """
-        Plot the objective function over a range of threshold values.
+    # ------------------------------------------------------------------
+    # visualisation
+    # ------------------------------------------------------------------
+    def plot_tradeoff(self, log_x: bool = False) -> None:
+        """Plot MSE (x) vs ASR (y) and highlight selected threshold."""
+        if not hasattr(self, "_frontier"):
+            raise AttributeError("frontier not cached")
 
-        This method visualizes the relationship between the threshold value and the objective function,
-        which is a combination of ASR and MSE.
-        """
-        thresholds = self.get_parameter_range()
-        objective_values = []
+        pts = self._frontier
+        pts_sorted = sorted(pts, key=lambda p_f: p_f[1][1])  # sort by MSE
 
-        for tresh in thresholds:
-            asr = self.get_asr(tresh)
-            mse = self.get_mse(tresh)
-            objective_value = self.w_asr * asr + self.w_mse * mse
-            objective_values.append(objective_value)
+        plt.scatter([f[1][1] for f in pts], [f[1][0] for f in pts],
+                    s=18, alpha=0.3, label="Candidates")
+        plt.plot([f[1][1] for f in pts_sorted], [f[1][0] for f in pts_sorted],
+                 "k--", label="Pareto Frontier")
 
-        plt.plot(thresholds, objective_values, marker='o')
-        plt.axvline(x=self.threshold, color='r', linestyle='--', label=f'Optimal Threshold: {self.threshold}')
-        plt.xlabel('Threshold')
-        plt.ylabel('Objective Function Value')
-        plt.title('Objective Function vs. Threshold')
-        plt.grid(True)
+        star_mse = self.get_mse()
+        star_asr = self.get_asr()
+        plt.scatter([star_mse], [star_asr], marker="*", s=220, color="k",
+                    label=f"Selected θ={self.threshold:.3f}")
+
+        plt.xlabel("MSE")
+        plt.ylabel("ASR")
+        if log_x:
+            plt.xscale("log")
+        plt.title(f"ASR-MSE Trade-off (k={self.k}, ε={self.epsilon:.2f})")
         plt.legend()
+        plt.grid(True, ls=":", alpha=0.6)
         plt.show()

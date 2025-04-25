@@ -1,10 +1,26 @@
-import numpy as np
-from numba import jit
-import matplotlib.pyplot as plt
-from scipy.stats import binom
+from __future__ import annotations
+from typing import Iterable, Tuple, Callable
 import warnings
+
+import numpy as np
+import matplotlib.pyplot as plt
+from numba import jit
+from scipy.stats import binom
+
+# silence harmless scipy warnings in the ASR loop
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="scipy.stats")
-warnings.filterwarnings("ignore", message="divide by zero encountered in _binom_pdf", module="scipy.stats._discrete_distns")
+
+from ldp_protocols.optimizer import (
+    pareto_front,
+    select_utopia,
+    select_elbow,
+    select_weighted,
+    select_epsilon_constraint,
+    select_hv_contribution,
+    select_chebyshev
+)
+
+__all__ = ["AdaptiveUnaryEncoding"]
 
 @jit(nopython=True)
 def ue_obfuscate(input_data: int, k: int, p: float, q: float) -> np.ndarray:
@@ -88,87 +104,139 @@ def attack_ue(obfuscated_vec: np.ndarray, k: int) -> int:
             return np.random.choice(np.where(obfuscated_vec == 1)[0])
 
 class AdaptiveUnaryEncoding:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
-        """
-        Initialize the Adaptive Unary Encoding (AUE) protocol.
+    """Adaptive Unary Encoding (AUE).
 
-        Parameters
-        ----------
-        k : int
-            The size of the domain (number of possible values). Must be an integer >= 2.
-        epsilon : float
-            The privacy budget, which determines the level of privacy guarantee. Must be positive.
-        w_asr : float, optional
-            Weight for the Adversarial Success Rate (ASR) in the optimization objective. Default is 0.5.
-        w_mse : float, optional
-            Weight for the MSE in the optimization objective. Default is 0.5.
+    Parameters
+    ----------
+    k : int
+        Domain size (≥ 2).
+    epsilon : float
+        Privacy budget (ε > 0).
+    optimization : {"elbow", "utopia", "weighted", "epsilon_constraint", "hypervolume", "chebyshev"}, default "weighted"
+        Optimization strategy used to select the best value of `p`:
+        • ``elbow`` - selects the Pareto point corresponding to the maximum perpendicular distance
+          from the line joining the extreme ASR/MSE trade-off points. Suitable for detecting "knee" points.\\
+        • ``utopia`` - selects the point on the Pareto frontier closest (in Euclidean distance)
+          to the ideal (ASR → 0, MSE → 0) point.\\
+        • ``weighted`` - selects the point that minimises a scalarised weighted sum
+          *w₁·ASR + w₂·MSE*, using the user-provided `weights`.\\
+        • ``epsilon_constraint`` - selects the point with minimal MSE among those whose ASR is
+          below a threshold `eps_asr`. Falls back to utopia if no such point exists.\\
+        • ``hypervolume`` - selects the point contributing the largest hypervolume (coverage) with
+          respect to a reference point. Promotes diversity and coverage.\\
+        • ``chebyshev`` - selects the point that minimises the augmented weighted Chebyshev norm:
+          *max(w₁·ASR, w₂·MSE) + ρ·(w₁·ASR + w₂·MSE)*. Useful for capturing edge cases.
 
-        Raises
-        ------
-        ValueError
-            If `k` is not >= 2, `epsilon` is not positive, or the weights are invalid.
-        """
-        if not isinstance(k, int) or k < 2:
-            raise ValueError("k must be an integer >= 2.")
-        if epsilon <= 0:
-            raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
-            raise ValueError("Weights must be between 0 and 1.")
-        
-        # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_mse
-        self.w_asr = w_asr / total_weight
-        self.w_mse = w_mse / total_weight
-        self.k = k
-        self.epsilon = epsilon
-        self.p, self.q = self.optimize_parameters()
+    weights : tuple(float, float), optional
+        Weight vector used when `optimization` is "weighted" or "chebyshev".
+        Must be two non-negative numbers; they are normalized internally.
 
-    def get_parameter_range(self) -> np.ndarray:
-        """
-        Get a range of p values to optimize over.
+    eps_asr : float, optional
+        Maximum allowed ASR when `optimization` is "epsilon_constraint". Default is 0.1.
 
-        Returns
-        -------
-        numpy.ndarray
-            A range of p values between 0.5 and 1.
-        """
-        return np.linspace(0.5, 0.999999, 100)
+    ref_point : tuple(float, float), optional
+        Reference point for hypervolume computation when `optimization` is "hypervolume".
+        Default is (1.0, 1.0).
 
-    def optimize_parameters(self) -> tuple[float, float]:
-        """
-        Optimize the parameters `p` and `q` using grid search to minimize the weighted sum of ASR and MSE.
+    rho : float, optional
+        Augmentation term used in "chebyshev" optimization. Default is 1e-6.
 
-        Returns
-        -------
-        tuple[float, float]
-            The optimized values of `p` and `q`.
+    p_grid : Iterable[float], optional
+        Custom grid of candidate `p` values to evaluate. Defaults to 
+        ``np.linspace(0.5, 0.999999, 100)``.
+    """
 
-        Raises
-        ------
-        ValueError
-            If no feasible solution for the optimization is found.
-        """
+    # ------------------------------------------------------------------
+    # construction
+    # ------------------------------------------------------------------
+    def __init__(
+        self,
+        k: int,
+        epsilon: float,
+        optimization: str = "weighted",
+        weights: Tuple[float, float] | None = (0.5, 0.5),
+        eps_asr: float = 0.1,
+        ref_point: Tuple[float, float] = (1.0, 1.0),
+        rho: float = 1e-6,
+        p_grid: Iterable[float] | None = None,
+    ) -> None:
+        if k < 2:
+            raise ValueError("k must be ≥ 2")
+        if not np.isfinite(epsilon) or epsilon <= 0:
+            raise ValueError("epsilon must be positive and finite")
+        if optimization not in {"elbow", "utopia", "weighted", "epsilon_constraint", "hypervolume", "chebyshev"}:
+            raise ValueError("Optimization must be 'elbow', 'utopia', 'weighted', 'epsilon_constraint', 'hypervolume', or 'chebyshev")
 
-        p_values = self.get_parameter_range()  # Define a range for p between 0.5 and 1
-        best_objective_value = float('inf')
-        best_p, best_q = None, None
+        self.k: int = k
+        self.epsilon: float = epsilon
+        self.optimization = optimization
+        self.eps_asr = eps_asr
+        self.ref_point = ref_point
+        self.rho = rho
 
-        for p in p_values:
-            # Calculate q to satisfy epsilon-LDP
-            q = p / (np.exp(self.epsilon) * (1 - p) + p)
+        # candidate p grid (continuous parameter → sample uniformly)
+        self._p_grid = (
+            np.linspace(0.5, 0.999999, 100)
+            if p_grid is None
+            else np.asarray(list(p_grid), dtype=float)
+        )
 
-            # Calculate the objective function value
-            obj_value = self.w_asr * self.get_asr(p, q) + self.w_mse * self.get_mse(p, q)
+        # Build frontier (ASR,MSE) for every p
+        self._frontier = pareto_front(self._p_grid, self.metrics)  # [(p, (ASR, MSE))]
 
-            if obj_value < best_objective_value:
-                best_objective_value = obj_value
-                best_p, best_q = p, q
+        # Select best p according to the optimization strategy
+        if optimization == "elbow":
+            self.p, _ = select_elbow(self._frontier)
 
-        if best_p is not None and best_q is not None:
-            return best_p, best_q
+        elif optimization == "utopia":
+            self.p, _ = select_utopia(self._frontier)
 
-        else:
-            raise ValueError("Optimization failed. No feasible solution found.")
+        elif optimization == "weighted":
+            if weights is None:
+                raise ValueError("weights must be provided for weighted selector")
+            w = np.asarray(weights, dtype=float)
+            if w.shape != (2,) or (w < 0).any() or w.sum() == 0:
+                raise ValueError("weights must be two non-negative numbers")
+            self.p, _ = select_weighted(self._frontier, w)
+
+        elif optimization == "epsilon_constraint":
+            self.p, _ = select_epsilon_constraint(self._frontier, eps_asr=self.eps_asr)
+
+        elif optimization == "hypervolume":
+            self.p, _ = select_hv_contribution(self._frontier, ref_point=self.ref_point)
+
+        elif optimization == "chebyshev":
+            if weights is None:
+                raise ValueError("weights must be provided for chebyshev selector")
+            w = np.asarray(weights, dtype=float)
+            if w.shape != (2,) or (w < 0).any() or w.sum() == 0:
+                raise ValueError("weights must be two non-negative numbers")
+            self.p, _ = select_chebyshev(self._frontier, w / w.sum(), rho=self.rho)
+
+        # derive q from ε-LDP constraint RNG
+        self.q = self._q_from_p(self.p)
+        self._rng = np.random.default_rng()
+
+    # ------------------------------------------------------------------
+    # Parameter space & metrics (required by optimizer)
+    # ------------------------------------------------------------------
+    def _q_from_p(self, p: float) -> float:
+        """Given *p*, return the unique *q* satisfying ε-LDP constraint."""
+        return p / (np.exp(self.epsilon) * (1.0 - p) + p)
+
+    def param_space(self) -> Iterable[float]:  # for optimiser API
+        return self._p_grid
+
+    def metrics(self, p: float) -> Tuple[float, float]:
+        q = self._q_from_p(p)          # derive the matching q
+        return self.get_asr(p, q), self.get_mse(p, q)
+
+    # Alias so the optimized import works with a generic callable
+    __call__: Callable[[float], Tuple[float, float]] = metrics
+
+    # ------------------------------------------------------------------
+    # Core protocol operations
+    # ------------------------------------------------------------------
 
     def obfuscate(self, input_data: int) -> np.ndarray:
         """
@@ -295,32 +363,31 @@ class AdaptiveUnaryEncoding:
         # Total expected ASR
         return asr_e0 + asr_sum
     
-    def plot_objective_function(self) -> None:
-        """
-        Plot the objective function over the range of `p` values and highlight the optimized `p`.
-        """
-        p_values = self.get_parameter_range()  # Define a range for p between 0.5 and 1
-        objective_values = []
+    # ------------------------------------------------------------------
+    # visualisation
+    # ------------------------------------------------------------------
+    def plot_tradeoff(self, log_x: bool = False) -> None:
+        if not hasattr(self, "_frontier"):
+            raise AttributeError("frontier not cached")
 
-        for p in p_values:
-            # Calculate q to satisfy epsilon-LDP
-            q = p / (np.exp(self.epsilon) * (1 - p) + p)
+        pts = self._frontier
+        pts_sorted = sorted(pts, key=lambda p_f: p_f[1][1])  # by MSE
 
-            # Calculate the objective function value
-            asr = self.get_asr(p, q)
-            mse = self.get_mse(p, q)
-            objective_value = self.w_asr * asr + self.w_mse * mse
-            objective_values.append(objective_value)
+        plt.scatter([f[1][1] for f in pts], [f[1][0] for f in pts],
+                    s=18, alpha=0.3, label="Candidates")
+        plt.plot([f[1][1] for f in pts_sorted], [f[1][0] for f in pts_sorted],
+                 "k--", label="Pareto Frontier")
 
-        plt.plot(p_values, objective_values, marker='o', label='Objective Function')
-        plt.xlabel('p')
-        plt.ylabel('Objective Function Value')
-        plt.title(f'Objective Function vs. p (epsilon={self.epsilon})')
-        plt.grid(True)
+        star_mse = self.get_mse()
+        star_asr = self.get_asr()
+        plt.scatter([star_mse], [star_asr], marker="*", s=220, color="k",
+                    label=f"Selected p={self.p:.3f}")
 
-        # Highlight the best p value
-        plt.axvline(self.p, color='r', linestyle='--', label=f'Optimal p={self.p:.4f}')
-
+        plt.xlabel("MSE")
+        plt.ylabel("ASR")
+        if log_x:
+            plt.xscale("log")
+        plt.title(f"ASR-MSE Trade-off (k={self.k}, ε={self.epsilon:.2f})")
         plt.legend()
-        plt.yscale('log')
+        plt.grid(True, ls=":", alpha=0.6)
         plt.show()

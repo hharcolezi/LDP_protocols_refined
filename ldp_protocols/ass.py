@@ -1,6 +1,21 @@
+from __future__ import annotations
+
+from typing import Iterable, Tuple, Callable, Sequence, List
 import numpy as np
 from numba import jit
 import matplotlib.pyplot as plt
+
+from ldp_protocols.optimizer import (
+    pareto_front,
+    select_utopia,
+    select_elbow,
+    select_weighted,
+    select_epsilon_constraint,
+    select_hv_contribution,
+    select_chebyshev
+)
+
+__all__ = ["AdaptiveSubsetSelection"]
 
 @jit(nopython=True)
 def ss_obfuscate(input_data: int, k: int, epsilon: float, omega: int) -> np.ndarray:
@@ -38,9 +53,8 @@ def ss_obfuscate(input_data: int, k: int, epsilon: float, omega: int) -> np.ndar
     p = omega * np.exp(epsilon) / (omega * np.exp(epsilon) + k - omega)
 
     # SS perturbation function
-    rnd = np.random.random()
     sub_set = np.zeros(omega, dtype='int64')
-    if rnd <= p:
+    if np.random.random() <= p:
         sub_set[0] = int(input_data)
         sub_set[1:] = np.random.choice(domain[domain != input_data], size=omega - 1, replace=False)
         return sub_set
@@ -69,82 +83,140 @@ def attack_ss(obfuscated_vec: np.ndarray) -> int:
         in the obfuscated subset.
     """
                 
-    return np.random.choice(obfuscated_vec)
+    return int(np.random.choice(obfuscated_vec))
 
 class AdaptiveSubsetSelection:
-    def __init__(self, k: int, epsilon: float, w_asr: float = 0.5, w_mse: float = 0.5):
-        """
-        Initialize the Adaptive Subset Selection (ASS) protocol with domain size k and privacy parameter epsilon.
+    """
+    Adaptive Sub-set Selection (ASS).
 
-        Parameters
-        ----------
-        k : int
-            Attribute's domain size. Must be an integer greater than or equal to 2.
-        epsilon : float
-            Privacy guarantee. Must be a positive numerical value.
-        w_asr : float, optional
-            Weight given to the Adversarial Success Rate (ASR) in the objective function. Default is 0.5.
-        w_mse : float, optional
-            Weight given to the MSE in the objective function. Default is 0.5.
+    Parameters
+    ----------
+    k : int
+        Domain size (≥2).
+    epsilon : float
+        Privacy budget (ε > 0).
+    optimization : {"elbow", "utopia", "weighted", "epsilon_constraint", "hypervolume", "chebyshev"}, default "weighted"
+        Optimization strategy used to select the best value of `p`:
+        • ``elbow`` - selects the Pareto point corresponding to the maximum perpendicular distance
+          from the line joining the extreme ASR/MSE trade-off points. Suitable for detecting "knee" points.\\
+        • ``utopia`` - selects the point on the Pareto frontier closest (in Euclidean distance)
+          to the ideal (ASR → 0, MSE → 0) point.\\
+        • ``weighted`` - selects the point that minimises a scalarised weighted sum
+          *w₁·ASR + w₂·MSE*, using the user-provided `weights`.\\
+        • ``epsilon_constraint`` - selects the point with minimal MSE among those whose ASR is
+          below a threshold `eps_asr`. Falls back to utopia if no such point exists.\\
+        • ``hypervolume`` - selects the point contributing the largest hypervolume (coverage) with
+          respect to a reference point. Promotes diversity and coverage.\\
+        • ``chebyshev`` - selects the point that minimises the augmented weighted Chebyshev norm:
+          *max(w₁·ASR, w₂·MSE) + ρ·(w₁·ASR + w₂·MSE)*. Useful for capturing edge cases.
 
-        Raises
-        ------
-        ValueError
-            If `k` is not >= 2, `epsilon` is not positive, or the weights are invalid.
-        """
-        if not isinstance(k, int) or k < 2:
-            raise ValueError("k must be an integer >= 2.")
-        if epsilon <= 0:
-            raise ValueError("epsilon must be a numerical value greater than 0.")
-        if not (0 <= w_asr <= 1) or not (0 <= w_mse <= 1):
-            raise ValueError("Weights must be between 0 and 1.")
+    weights : tuple(float, float), optional
+        Weight vector used when `optimization` is "weighted" or "chebyshev".
+        Must be two non-negative numbers; they are normalized internally.
 
-        # Normalize the weights so that their sum is 1
-        total_weight = w_asr + w_mse
-        self.w_asr = w_asr / total_weight
-        self.w_mse = w_mse / total_weight
-        self.k = k
-        self.epsilon = epsilon
-        self.omega = self.optimize_parameters()
-        self.p = (self.omega * np.exp(self.epsilon)) / (self.omega * np.exp(self.epsilon) + self.k - self.omega)
-        self.q = (self.omega * np.exp(self.epsilon) * (self.omega - 1) + (self.k - self.omega) * self.omega) / ((self.k - 1) * (self.omega * np.exp(self.epsilon) + self.k - self.omega))
+    eps_asr : float, optional
+        Maximum allowed ASR when `optimization` is "epsilon_constraint". Default is 0.1.
 
-    def get_parameter_range(self) -> np.ndarray:
-        """
-        Get the range of omega values to search over during optimization.
+    ref_point : tuple(float, float), optional
+        Reference point for hypervolume computation when `optimization` is "hypervolume".
+        Default is (1.0, 1.0).
 
-        Returns
-        -------
-        numpy.ndarray
-            The range of omega values to search over.
-        """
-        return np.arange(1, self.k - 1) # Omega must be between 1 and k-1
-    
-    def optimize_parameters(self) -> int:
-        """
-        Optimize the value of omega using grid search to balance MSE and ASR.
+    rho : float, optional
+        Augmentation term used in "chebyshev" optimization. Default is 1e-6.
+    omg_grid : Iterable[int], optional
+        Custom grid of candidate ω; defaults to ``range(1, k)``.
+    """
+    # ------------------------------------------------------------------
+    # Construction & initialisation
+    # ------------------------------------------------------------------
+    def __init__(
+        self,
+        k: int,
+        epsilon: float,
+        optimization: str = "weighted",
+        weights: Tuple[float, float] | None = (0.5, 0.5),
+        eps_asr: float = 0.1,
+        ref_point: Tuple[float, float] = (1.0, 1.0),
+        rho: float = 1e-6,
+        omg_grid: Iterable[int] | None = None,
+    ) -> None:
+        if k < 2:
+            raise ValueError("k must be >= 2")
+        if not np.isfinite(epsilon) or epsilon <= 0:
+            raise ValueError("ε must be a positive finite number")
+        if optimization not in {"elbow", "utopia", "weighted", "epsilon_constraint", "hypervolume", "chebyshev"}:
+            raise ValueError("Optimization must be 'elbow', 'utopia', 'weighted', 'epsilon_constraint', 'hypervolume', or 'chebyshev")
 
-        Returns
-        -------
-        int
-            The optimized value of omega.
-        """
-        # Define range of omega values to search over
-        omega_values = self.get_parameter_range()
+        self.k: int = k
+        self.epsilon: float = epsilon
+        self.optimization = optimization
+        self.eps_asr = eps_asr
+        self.ref_point = ref_point
+        self.rho = rho
 
-        best_omega = 1
-        best_obj_value = float('inf')
+        # Candidate omega grid
+        self._omg_grid = (
+            np.arange(1, k) if omg_grid is None else np.array(list(omg_grid), dtype=int)
+        )
 
-        for omega in omega_values:
-            asr = self.get_asr(omega)
-            mse = self.get_mse(omega)
-            obj_value = self.w_asr * asr + self.w_mse * mse
+        # Build frontier (ASR,MSE) for every ω
+        self._frontier = pareto_front(self._omg_grid, self.metrics)  # [(ω, (ASR,MSE))]
 
-            if obj_value < best_obj_value:
-                best_omega = omega
-                best_obj_value = obj_value
+        if optimization == "elbow":
+            self.omega, _ = select_elbow(self._frontier)
 
-        return best_omega
+        elif optimization == "utopia":
+            self.omega, _ = select_utopia(self._frontier)
+
+        elif optimization == "weighted":
+            if weights is None:
+                raise ValueError("weights must be provided for weighted selector")
+            w = np.asarray(weights, dtype=float)
+            if w.shape != (2,) or (w < 0).any() or w.sum() == 0:
+                raise ValueError("weights must be two non-negative numbers")
+            self.omega, _ = select_weighted(self._frontier, w)
+
+        elif optimization == "epsilon_constraint":
+            self.omega, _ = select_epsilon_constraint(self._frontier, eps_asr=self.eps_asr)
+
+        elif optimization == "hypervolume":
+            self.omega, _ = select_hv_contribution(self._frontier, ref_point=self.ref_point)
+
+        elif optimization == "chebyshev":
+            if weights is None:
+                raise ValueError("weights must be provided for chebyshev selector")
+            w = np.asarray(weights, dtype=float)
+            if w.shape != (2,) or (w < 0).any() or w.sum() == 0:
+                raise ValueError("weights must be two non-negative numbers")
+            self.omega, _ = select_chebyshev(self._frontier, w / w.sum(), rho=self.rho)
+
+        # pre-compute p,q constants & RNG
+        self.p, self.q = self._pq(self.omega)
+        self._rng = np.random.default_rng()
+
+    # ------------------------------------------------------------------
+    # Parameter space & metrics (required by optimizer)
+    # ------------------------------------------------------------------
+    def param_space(self) -> Iterable[int]:
+        """Return iterable of ω candidates."""
+        return self._omg_grid
+
+    def _pq(self, omega: int) -> tuple[float, float]:
+        p = (omega * np.exp(self.epsilon)) / (omega * np.exp(self.epsilon) + self.k - omega)
+        q = (omega * np.exp(self.epsilon) * (omega - 1) + (self.k - omega) * omega) / ((self.k - 1) * (omega * np.exp(self.epsilon) + self.k - omega))
+
+        return p, q
+
+    def metrics(self, omega: int) -> Tuple[float, float]:
+        """Return (ASR, MSE) for a candidate ω (size of subset)."""
+        return self.get_asr(omega), self.get_mse(omega)
+
+    # Alias so the optimized import works with a generic callable
+    __call__: Callable[[int], Tuple[float, float]] = metrics  # for optimiser
+
+    # ------------------------------------------------------------------
+    # Core protocol operations
+    # ------------------------------------------------------------------
 
     def obfuscate(self, input_data: int) -> np.ndarray:
         """
@@ -263,27 +335,31 @@ class AdaptiveSubsetSelection:
             
         return np.exp(self.epsilon) / (omega * np.exp(self.epsilon) + self.k - omega)
 
-    def plot_objective_function(self) -> None:
-        """
-        Plot the objective function over a range of omega values, highlighting the optimal omega value.
-        """
-        omega_values = self.get_parameter_range()
-        objective_values = []
+    # ------------------------------------------------------------------
+    # visualisation
+    # ------------------------------------------------------------------
+    def plot_tradeoff(self, log_x: bool = False) -> None:
+        """Plot MSE (x) vs ASR (y) and mark the chosen ω."""
+        if not hasattr(self, "_frontier"):
+            raise AttributeError("frontier not cached – object created incorrectly")
 
-        for omega in omega_values:
-            asr = self.get_asr(omega)
-            mse = self.get_mse(omega)
-            obj_value = self.w_asr * asr + self.w_mse * mse
-            objective_values.append(obj_value)
+        frontier = self._frontier
+        frontier_sorted = sorted(frontier, key=lambda t_f: t_f[1][1])  # sort by MSE
 
-        plt.plot(omega_values, objective_values, marker='o', label='Objective Function')
-        plt.xlabel('omega')
-        plt.ylabel('Objective Function Value')
-        plt.title(f'Objective Function vs. omega (epsilon={self.epsilon})')
-        plt.grid(True)
+        plt.scatter([f[1][1] for f in frontier], [f[1][0] for f in frontier],
+                    s=18, alpha=0.3, label="Candidates")
+        plt.plot([f[1][1] for f in frontier_sorted], [f[1][0] for f in frontier_sorted],
+                 "k--", label="Pareto Frontier")
+        star_mse = self.get_mse()
+        star_asr = self.get_asr()
+        plt.scatter([star_mse], [star_asr], marker="*", s=220, color="k",
+                    label=f"Selected ω={self.omega}")
 
-        # Highlight the best omega value
-        plt.axvline(self.omega, color='r', linestyle='--', label=f'Optimal omega={self.omega}')
+        plt.xlabel("MSE")
+        plt.ylabel("ASR")
+        if log_x:
+            plt.xscale("log")
+        plt.title(f"MSE-ASR Trade-off (k={self.k}, ε={self.epsilon:.2f})")
         plt.legend()
-        plt.yscale('log')
+        plt.grid(True, ls=":", alpha=0.6)
         plt.show()
