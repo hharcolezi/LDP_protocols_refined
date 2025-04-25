@@ -25,5 +25,11 @@ dic_analyses = {
                 "low_priv_large_domain": {"k": high_domain, "lst_eps": low_privacy, "title": "Low Privacy Regime & Large Domain Size"}
                 }
 
+# Set of optimization methods
+optimization_methods = [
+                        "utopia", "weighted", "elbow",
+                        "epsilon_constraint", "hypervolume", "chebyshev"
+                       ]
+
 # Empirical experiments
 nb_users = [500, 5000, 50000]
