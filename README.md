@@ -64,7 +64,7 @@ print("AUE Variance:", aue.get_variance(), "\n")
 ```
 
 ## Contact
-For any question, please contact [Héber H. Arcolezi](https://hharcolezi.github.io/): heber.hwang-arcolezi [at] inria.fr
+For any question, please contact [Héber H. Arcolezi](https://hharcolezi.github.io/)
 
 
 ## License
