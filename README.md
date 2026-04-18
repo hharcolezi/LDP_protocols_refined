@@ -82,3 +82,4 @@ For any question, please contact [Héber H. Arcolezi](https://hharcolezi.github.
 
 ## 📜 License
 This repository is licensed under the MIT License. See [LICENSE](https://github.com/hharcolezi/LDP_protocols_reoptimized/blob/main/LICENSE) for details.
+
